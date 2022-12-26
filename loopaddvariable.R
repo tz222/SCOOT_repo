@@ -220,8 +220,7 @@ add_variables <- function(trip_person){
   # access waiting time depends on if SC is AV
   ## 'SCAV', 'STAV', AVtech
   trip_person$SCAV <-3
-  trip_person$SCAV <-3
-  #trip_person$STAV <- 3
+  trip_person$STAV <- 3
   trip_person$AVtech <-0
   
   # dropoff walking time
@@ -247,21 +246,21 @@ add_variables <- function(trip_person){
   return(trip_person_density)
 } 
 
-# list of MSA with vehicle availability data
-#msa_ls = c(12420,14460,16980,12060,12580,16740,20500,40060,47900,19740,31080,33460,41860,41940)  
-trip_count <- c()
-
-# make sure the path to final_population is correct
-path <- "final_population"
-msa_files <- dir(path)
-
-# for testing
-# i <- 1
 tract_trip_col <-c("TRACT", "user", "age", "gender","race", "hispanic",
                    "usborn","edu","student","work", "zipcode" ,"hhsize",
                    "child", "hhincome","idincome", "disable","veh","bike",
                    "TRPMILES","TRIPPURP","dest_tract","tour_id_unq", "tour_id",
                    "MSA", "TDTRPNUM" )  
+
+# list of MSA with vehicle availability data
+#msa_ls = c(12420,14460,16980,12060,12580,16740,20500,40060,47900,19740,31080,33460,41860,41940)  
+trip_count <- c()
+# make sure the path to final_population is correct
+path <- "H:/tz237/Tourgen/scoot-20221221T214221Z-001/scoot/data/final_population"
+msa_files <- dir(path)
+# for testing
+# i <- 1
+
 for (i in 1:length(msa_files)){
   
   #file_read <- paste0("final_population/generated_tracts_",msa_ls[i],".rds")
