@@ -35,7 +35,7 @@ geo_results$sum_exp = exp(geo_results$car.utility)*geo_results$car_av +
 
 #geo_agg = aggregate(geo_results[,c('TRACT','accessibility')],by=list(geo_results$TRACT),FUN = mean)
 
-geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
+#geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
 
 
 #example codes for state, need to change to MSA
@@ -67,20 +67,7 @@ ui <- fluidPage(
             radioButtons("bike_lane", "Bike Lane Availbility", 
                          choices = list("Less than 80% of the whole trip" = 1, 
                                         "More than or equal to 80% of the whole trip"=2), selected = 1),
-            column(6,
-                   checkboxGroupInput("service_types", "Service Types", 
-                                      choices = list("Scooter" = 1,
-                                                     "Doked Bike" = 2,
-                                                     "Dockless Bike" = 3, 
-                                                     "Scooter+Transit" = 4), 
-                                      selected = c(1,2,3,4))
-            ),
-            column(6,
-                   radioButtons("report_metric", "Report Metric", choices = list("Trip Count" = 1, 
-                                                                                 "Accessibility" = 2,
-                                                                                 "Mobility Carbon Productivity (MCP)"=3,
-                                                                                 'GHG Emission'), selected = 1)
-                   ),
+            
             actionButton("show_results", "Show Results"),
             actionButton("save_selection", "Save Selection")
             
@@ -88,7 +75,7 @@ ui <- fluidPage(
             ),
 
         mainPanel(
-            leafletOutput("mymap"),
+            
             column(6,
                    checkboxGroupInput("service_types", "Service Types", 
                                       choices = list("Scooter" = 1,
@@ -101,8 +88,9 @@ ui <- fluidPage(
                    radioButtons("report_metric", "Report Metric", choices = list("Trip Count" = 1, 
                                                                                  "Accessibility" = 2,
                                                                                  "Mobility Carbon Productivity (MCP)"=3,
-                                                                                 'GHG Emission'), selected = 1)
-            )
+                                                                                 'GHG Emission'=4), selected = 1)
+            ),
+            leafletOutput("mymap"),
         )
     )
 )
@@ -128,11 +116,66 @@ server <- function(input, output) {
     })
     aggregate_reactive = reactive({
         geo_msa_tract = selectMSA_reactive()
-        print(nrow(geo_msa_tract))
-        if (input$report_metric==2){
+        
+        # get probability
+        geo_results$Pcar = exp(geo_results$car.utility)*geo_results$car_av / geo_results$sum_exp
+        geo_results$Ptransit = exp(geo_results$transit.utility)*geo_results$transit_av / geo_results$sum_exp
+        geo_results$Pridehail = exp(geo_results$ridehail.utility)*geo_results$rd_av / geo_results$sum_exp 
+        geo_results$Pwalk = exp(geo_results$walk.utility)*geo_results$walk_av / geo_results$sum_exp
+        geo_results$Pbike = exp(geo_results$bike.utility)*geo_results$bike_av / geo_results$sum_exp
+        geo_results$Pscooter = exp(geo_results$scooter.utility)*geo_results$scooter_av / geo_results$sum_exp
+        geo_results$Pdocklessbike = exp(geo_results$docklessbike.utility)*geo_results$dlbike_av / geo_results$sum_exp
+        geo_results$Pdockedbike = exp(geo_results$dockedbike.utility)*geo_results$dkbike_av / geo_results$sum_exp
+        geo_results$Pscooter_transit =  exp(geo_results$scooter_transit.utility)*geo_results$sctransit_av / geo_results$sum_exp
+        
+        # GHG emission factor: g CO2-eq/passenger-mile
+        eCar = 424
+        eTran = 291
+        eDocked =105
+        eDockless = 190
+        eScoot = 202
+        eRidehail = 443
+        
+        # SCC  $/metric ton
+        scc = 51
+        a=-0.799 # need to prepare a file to store all cost coefficients
+        
+        pE =(eCar*geo_results$Pcar+
+                 eTran*geo_results$Ptransit+
+                 eDocked*geo_results$Pdockedbike+
+                 eDockless*geo_results$Pdocklessbike+
+                 eScoot*geo_results$Pscooter+
+                 eRidehail*geo_results$Pridehail+
+                 (0.3*eScoot + 0.7*eTran)*geo_results$Pscooter_transit)*geo_results$TRPMILES
+        
+        geo_tripcount = aggregate(geo_results[,'orig_tract'], by =list(geo_results$orig_tract), length)
+        
+        if (input$report_metric==1){#trip count
+            # total number of trip per tract
+            geo_agg = aggregate(geo_results[,c('orig_tract','Pscooter','Pdocklessbike','Pdockedbike','Pscooter_transit')],
+                                by=list(geo_results$orig_tract),FUN = mean)
+            geo_agg$trip_count = geo_tripcount$x
+            geo_agg$report = rowSums(geo_agg[,c('Pscooter','Pdocklessbike','Pdockedbike','Pscooter_transit')])*geo_agg$trip_count/0.03
+            geo_map = merge(geo_msa_tract,geo_agg,by.y='orig_tract',by.x='geoid')
+        }
+        else if (input$report_metric==2){#accessibility
             geo_results$report = log(sum_exp)
             geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = mean)
             geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
+        }
+        else if (input$report_metric==3){#MCP
+            
+            term2 = exp(a*scc*pE/1000000)#ton
+            geo_results$report = log(sum_exp + term2 )
+
+            geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = mean)
+            geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
+        }
+        else if (input$report_metric==4){#GHG (sum)
+            geo_results$report = pE
+            geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = sum)
+            geo_agg$report = geo_agg$report/0.03/1000000 #ton
+            geo_map = merge(geo_msa_tract,geo_agg,by.y='Group.1',by.x='geoid')
         }
         return(geo_map)
         
@@ -140,12 +183,26 @@ server <- function(input, output) {
     output$mymap <- renderLeaflet({
         if(map_start()){
             geo_map = aggregate_reactive()
-            
-            if (input$report_metric == 2) {
-                label_report = sprintf("%g Logsum Accessibility: %s", round(geo_map$report, 1),geo_map$namelsad)
+            if (input$report_metric == 1) {
+                label_report = sprintf("Trip count:%g trips per day %s", round(geo_map$report, 1),geo_map$namelsad)
+                groupname = "Trip count"
+                legendformat = labelFormat()
+            }
+            else if (input$report_metric == 2) {
+                label_report = sprintf("Logsum Accessibility:%g, %s", round(geo_map$report, 1),geo_map$namelsad)
                 groupname = "Accessibility"
                 legendformat = labelFormat()
-                }
+            }
+            else if (input$report_metric == 3) {
+                label_report = sprintf("Mobility Carbon Productivity (MCP): %g, %s", round(geo_map$report, 1),geo_map$namelsad)
+                groupname = "Mobility Carbon Productivity (MCP)"
+                legendformat = labelFormat()
+            }
+            else if (input$report_metric == 4) {
+                label_report = sprintf("GHG Emission: %g ton, %s", round(geo_map$report, 1),geo_map$namelsad)
+                groupname = "GHG Emission"
+                legendformat = labelFormat()
+            }
             
             pal_report = colorNumeric("YlOrRd", domain = geo_map$report)
             leaflet(geo_map) %>%
