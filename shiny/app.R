@@ -21,15 +21,15 @@ msa_tract_shp = read_sf(msa_tract_shp_path)
 geo_msa_tract = msa_tract_shp[msa_tract_shp$jmsa_geoid==12420,]
 geo_results = read.csv("/Users/tianqizou/Documents/DOE/model literature/hybrid choice/aws/austin_base_utils.csv")
 
-geo_results$sum_exp = exp(geo_results$car.utility)*geo_results$car_av +
-    exp(geo_results$transit.utility)*geo_results$transit_av +
-    exp(geo_results$ridehail.utility)*geo_results$rd_av +
-    exp(geo_results$walk.utility)*geo_results$walk_av +
-    exp(geo_results$bike.utility)*geo_results$bike_av +
-    exp(geo_results$scooter.utility)*geo_results$scooter_av +
-    exp(geo_results$docklessbike.utility)*geo_results$dlbike_av +
-    exp(geo_results$dockedbike.utility)*geo_results$dkbike_av +
-    exp(geo_results$scooter_transit.utility)*geo_results$sctransit_av
+# geo_results$sum_exp = exp(geo_results$car.utility)*geo_results$car_av +
+#     exp(geo_results$transit.utility)*geo_results$transit_av +
+#     exp(geo_results$ridehail.utility)*geo_results$rd_av +
+#     exp(geo_results$walk.utility)*geo_results$walk_av +
+#     exp(geo_results$bike.utility)*geo_results$bike_av +
+#     exp(geo_results$scooter.utility)*geo_results$scooter_av +
+#     exp(geo_results$docklessbike.utility)*geo_results$dlbike_av +
+#     exp(geo_results$dockedbike.utility)*geo_results$dkbike_av +
+#     exp(geo_results$scooter_transit.utility)*geo_results$sctransit_av
 
 #geo_results$accessibility = log(sum_exp)
 
@@ -54,12 +54,6 @@ ui <- fluidPage(
         sidebarPanel(
             selectInput("msa_codes", "Choose a MSA", 
                         choices = msa_codes, selected = "00"),
-            selectInput("density_level", 
-                        label = "Implementation Location (by density)", 
-                        choices = c("Everywhere" = 1,
-                                    "Above 5,000 per sq.mile"=2,
-                                    "Above 10,000 per sq.mile"=3,
-                                    "Above 20,000 per sq.mile"=4) ),
             radioButtons("veh_avail", "Access/Drop-off Walking Time", 
                          choices = list("1 min (157 bikes/scooters per sq.mi) on average" = 1, 
                                         "3 min (17 bikes/scooters per sq.mi) on average" = 3,
@@ -75,21 +69,30 @@ ui <- fluidPage(
             ),
 
         mainPanel(
-            
+            fluidRow(
+            column(6,
+                   selectInput("density_level", 
+                               label = "Implementation Location (by density)", 
+                               choices = c("Everywhere" = 1,
+                                           "Above 5,000 per sq.mile"=2,
+                                           "Above 10,000 per sq.mile"=3,
+                                           "Above 20,000 per sq.mile"=4) )
+                   )),
+            fluidRow(
             column(6,
                    checkboxGroupInput("service_types", "Service Types", 
                                       choices = list("Scooter" = 1,
-                                                     "Doked Bike" = 2,
+                                                     "Docked Bike" = 2,
                                                      "Dockless Bike" = 3, 
                                                      "Scooter+Transit" = 4), 
                                       selected = c(1,2,3,4))
             ),
             column(6,
-                   radioButtons("report_metric", "Report Metric", choices = list("Trip Count" = 1, 
-                                                                                 "Accessibility" = 2,
-                                                                                 "Mobility Carbon Productivity (MCP)"=3,
-                                                                                 'GHG Emission'=4), selected = 1)
-            ),
+                   radioButtons("report_metric", "Report Metric", choices = list("Trip Count (per day)" = 1, 
+                                                                                 "Net Accessibility" = 2,
+                                                                                 "Net Mobility Carbon Productivity (MCP)"=3,
+                                                                                 'Net GHG Emission (kg)'=4), selected = 1)
+            )),
             leafletOutput("mymap"),
         )
     )
@@ -116,18 +119,79 @@ server <- function(input, output) {
     })
     aggregate_reactive = reactive({
         geo_msa_tract = selectMSA_reactive()
+        scooter = 0
+        docked = 0
+        dockless = 0
+        sc_transit = 0
+        if (1 %in% input$service_types) {
+            scooter = 1
+        }
+        if (2 %in% input$service_types) {
+            docked = 1
+        }
+        if (3 %in% input$service_types) {
+            dockless = 1
+        }
+        if (4 %in% input$service_types) {
+            sc_transit = 1
+        }
+        
+        if (input$density_level ==1){
+            geo_results$density=1
+        }
+        if (input$density_level ==2){
+            geo_results$density=ifelse(geo_results$popdensity>=5,1,0)
+        }
+        if (input$density_level ==3){
+            geo_results$density=ifelse(geo_results$popdensity>=10,1,0)
+        }
+        if (input$density_level ==4){
+            geo_results$density=ifelse(geo_results$popdensity>=20,1,0)
+        }
+        # sum of expontial utility
+        
+        ut_car = exp(geo_results$car.utility)*geo_results$car_av 
+        ut_transit = exp(geo_results$transit.utility)*geo_results$transit_av 
+        ut_ridehail = exp(geo_results$ridehail.utility)*geo_results$rd_av 
+        ut_walk = exp(geo_results$walk.utility)*geo_results$walk_av 
+        ut_bike = exp(geo_results$bike.utility)*geo_results$bike_av 
+        ut_scooter = exp(geo_results$scooter.utility)*geo_results$scooter_av*scooter*geo_results$density
+        ut_dockless = exp(geo_results$docklessbike.utility)*geo_results$dlbike_av*dockless*geo_results$density
+        ut_docked = exp(geo_results$dockedbike.utility)*geo_results$dkbike_av*docked*geo_results$density 
+        ut_sc_transit = exp(geo_results$scooter_transit.utility)*geo_results$sctransit_av*sc_transit*geo_results$density
+        
+        geo_results$sum_exp = ut_car + 
+            ut_transit + 
+            ut_ridehail + 
+            ut_walk + 
+            ut_bike + 
+            ut_scooter + 
+            ut_dockless + 
+            ut_docked +
+            ut_sc_transit
+        
+        geo_results$sum_exp_base = ut_car + 
+            ut_transit + 
+            ut_ridehail + 
+            ut_walk + 
+            ut_bike 
         
         # get probability
-        geo_results$Pcar = exp(geo_results$car.utility)*geo_results$car_av / geo_results$sum_exp
-        geo_results$Ptransit = exp(geo_results$transit.utility)*geo_results$transit_av / geo_results$sum_exp
-        geo_results$Pridehail = exp(geo_results$ridehail.utility)*geo_results$rd_av / geo_results$sum_exp 
-        geo_results$Pwalk = exp(geo_results$walk.utility)*geo_results$walk_av / geo_results$sum_exp
-        geo_results$Pbike = exp(geo_results$bike.utility)*geo_results$bike_av / geo_results$sum_exp
-        geo_results$Pscooter = exp(geo_results$scooter.utility)*geo_results$scooter_av / geo_results$sum_exp
-        geo_results$Pdocklessbike = exp(geo_results$docklessbike.utility)*geo_results$dlbike_av / geo_results$sum_exp
-        geo_results$Pdockedbike = exp(geo_results$dockedbike.utility)*geo_results$dkbike_av / geo_results$sum_exp
-        geo_results$Pscooter_transit =  exp(geo_results$scooter_transit.utility)*geo_results$sctransit_av / geo_results$sum_exp
+        geo_results$Pcar = ut_car / geo_results$sum_exp
+        geo_results$Ptransit = ut_transit / geo_results$sum_exp
+        geo_results$Pridehail = ut_ridehail / geo_results$sum_exp 
+        geo_results$Pwalk = ut_walk / geo_results$sum_exp
+        geo_results$Pbike = ut_bike / geo_results$sum_exp
+        geo_results$Pscooter = ut_scooter / geo_results$sum_exp
+        geo_results$Pdocklessbike = ut_dockless / geo_results$sum_exp
+        geo_results$Pdockedbike = ut_docked / geo_results$sum_exp
+        geo_results$Pscooter_transit =  ut_sc_transit / geo_results$sum_exp
         
+        geo_results$Pcar_b = ut_car / geo_results$sum_exp_base
+        geo_results$Ptransit_b = ut_transit / geo_results$sum_exp_base
+        geo_results$Pridehail_b = ut_ridehail / geo_results$sum_exp_base 
+        geo_results$Pwalk_b = ut_walk / geo_results$sum_exp_base
+        geo_results$Pbike_b = ut_bike / geo_results$sum_exp_base
         # GHG emission factor: g CO2-eq/passenger-mile
         eCar = 424
         eTran = 291
@@ -148,6 +212,8 @@ server <- function(input, output) {
                  eRidehail*geo_results$Pridehail+
                  (0.3*eScoot + 0.7*eTran)*geo_results$Pscooter_transit)*geo_results$TRPMILES
         
+        pE_b = (eCar*geo_results$Pcar_b+eTran*geo_results$Ptransit_b+eRidehail*geo_results$Pridehail_b)*geo_results$TRPMILES
+        
         geo_tripcount = aggregate(geo_results[,'orig_tract'], by =list(geo_results$orig_tract), length)
         
         if (input$report_metric==1){#trip count
@@ -159,22 +225,23 @@ server <- function(input, output) {
             geo_map = merge(geo_msa_tract,geo_agg,by.y='orig_tract',by.x='geoid')
         }
         else if (input$report_metric==2){#accessibility
-            geo_results$report = log(sum_exp)
+            geo_results$report = log(geo_results$sum_exp)-log(geo_results$sum_exp_base)
             geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = mean)
             geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
         }
         else if (input$report_metric==3){#MCP
             
             term2 = exp(a*scc*pE/1000000)#ton
-            geo_results$report = log(sum_exp + term2 )
+            term2_b = exp(a*scc*pE_b/1000000)
+            geo_results$report = log(geo_results$sum_exp + term2 )-log(geo_results$sum_exp_base + term2_b )
 
             geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = mean)
             geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
         }
         else if (input$report_metric==4){#GHG (sum)
-            geo_results$report = pE
+            geo_results$report = pE-pE_b
             geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = sum)
-            geo_agg$report = geo_agg$report/0.03/1000000 #ton
+            geo_agg$report = geo_agg$report/0.03/1000 #kg
             geo_map = merge(geo_msa_tract,geo_agg,by.y='Group.1',by.x='geoid')
         }
         return(geo_map)
@@ -189,17 +256,17 @@ server <- function(input, output) {
                 legendformat = labelFormat()
             }
             else if (input$report_metric == 2) {
-                label_report = sprintf("Logsum Accessibility:%g, %s", round(geo_map$report, 1),geo_map$namelsad)
+                label_report = sprintf("Net Logsum Accessibility:%g, %s", round(geo_map$report, 1),geo_map$namelsad)
                 groupname = "Accessibility"
                 legendformat = labelFormat()
             }
             else if (input$report_metric == 3) {
-                label_report = sprintf("Mobility Carbon Productivity (MCP): %g, %s", round(geo_map$report, 1),geo_map$namelsad)
+                label_report = sprintf("Net Mobility Carbon Productivity (MCP): %g, %s", round(geo_map$report, 1),geo_map$namelsad)
                 groupname = "Mobility Carbon Productivity (MCP)"
                 legendformat = labelFormat()
             }
             else if (input$report_metric == 4) {
-                label_report = sprintf("GHG Emission: %g ton, %s", round(geo_map$report, 1),geo_map$namelsad)
+                label_report = sprintf("Net GHG Emission: %g kg, %s", round(geo_map$report, 1),geo_map$namelsad)
                 groupname = "GHG Emission"
                 legendformat = labelFormat()
             }
