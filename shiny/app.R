@@ -14,9 +14,13 @@ library(mapproj)
 library(stringr)
 library(htmltools)
 library(sf)
+library(ggplot2)
+library(shinyBS)
 
+rm(list = ls())
 msa_tract_shp_path = "/Users/tianqizou/Documents/DOE/shapefiles/msa_puma_tract_join.shp"
 msa_tract_shp = read_sf(msa_tract_shp_path)
+
 
 geo_msa_tract = msa_tract_shp[msa_tract_shp$jmsa_geoid==12420,]
 geo_results = read.csv("/Users/tianqizou/Documents/DOE/model literature/hybrid choice/aws/austin_base_utils.csv")
@@ -54,46 +58,124 @@ ui <- fluidPage(
         sidebarPanel(
             selectInput("msa_codes", "Choose a MSA", 
                         choices = msa_codes, selected = "00"),
-            radioButtons("veh_avail", "Access/Drop-off Walking Time", 
+            selectInput("density_level", 
+                        #label = "Implementation Location (by density)", 
+                        label = tags$span("Implementation Location (by density)", 
+                                          bsButton("density_info", label = "", icon = icon("info"), 
+                                                   style = "info", size = "extra-small")),
+                        choices = c("Everywhere" = 1,
+                                    "Above 5,000 per sq.mile"=2,
+                                    "Above 10,000 per sq.mile"=3,
+                                    "Above 20,000 per sq.mile"=4)),
+            bsPopover(
+                id = "density_info",
+                title = "More information",
+                content = "Introduce micromobility services only to areas above a certain level of population density",
+                placement = "right",
+                trigger = "hover",
+                options = list(container = "body")
+            ),
+            radioButtons("veh_avail", 
+                         label = tags$span("Access/Drop-off Walking Time", 
+                                           bsButton("access_info", label = "", icon = icon("info"), 
+                                                    style = "info", size = "extra-small")),
                          choices = list("1 min (157 bikes/scooters per sq.mi) on average" = 1, 
                                         "3 min (17 bikes/scooters per sq.mi) on average" = 3,
                                         "5 min (6 bikes/scooters per sq.mi) on average"=5), selected = 1),
-            radioButtons("bike_lane", "Bike Lane Availbility", 
-                         choices = list("Less than 80% of the whole trip" = 1, 
-                                        "More than or equal to 80% of the whole trip"=2), selected = 1),
-            
-            actionButton("show_results", "Show Results"),
-            actionButton("save_selection", "Save Selection")
+            bsPopover(
+                id = "access_info",
+                title = "More information",
+                content = "Average walking time to the nearest bike or scooter or average walking time from dropoff station location to final destination",
+                placement = "right",
+                trigger = "hover",
+                options = list(container = "body")
+            ),
+            radioButtons("bike_lane", 
+                         label = tags$span("Bike Lane Availbility", 
+                                           bsButton("bikelane_info", label = "", icon = icon("info"), 
+                                                    style = "info", size = "extra-small")),
+                         choices = list("Less than 80% of the whole trip" = 0, 
+                                        "More than or equal to 80% of the whole trip"=1), selected = 0),
+            bsPopover(
+                id = "bikelane_info",
+                title = "More information",
+                content = "Bike lane coverage of the whole trip",
+                placement = "right",
+                trigger = "hover",
+                options = list(container = "body")
+            ),
+            checkboxGroupInput("service_types", 
+                               label ="Service Types", 
+                               choices = list("Scooter" = 1,
+                                              "Docked Bike" = 2,
+                                              "Dockless Bike" = 3, 
+                                              "Scooter+Transit" = 4), 
+                               selected = c(1,2,3,4)),
+            radioButtons("report_metric", 
+                         label = tags$span("Report Metric on Map", 
+                                           bsButton("report_info", label = "", icon = icon("info"), 
+                                                    style = "info", size = "extra-small")),
+                                        
+                                           choices = list("Trip Count (per day)" = 1, 
+                                                                          "Net Accessibility" = 2,
+                                                                          "Net Mobility Carbon Productivity (MCP)"=3,
+                                                                          'Net GHG Emission (kg)'=4), selected = 1),
+                         bsPopover(
+                             id = "report_info",
+                             title = "More information",
+                             content = paste("Trip count: total number of daily trips",
+                                             "Net accessibility: change in average accessibility per trip after introducing micromobility services",
+                                             "Net MCP: change in average MCP per trip after introducing micromobility services",
+                                             "Net GHG emission: change in GHG emission of total trips after introducing micromobility services", 
+                                             sep = "<br><br>")
+                             ,
+                             placement = "right",
+                             trigger = "hover",
+                             options = list(container = "body")
+                         )
+                        
+            #actionButton("show_results", "Show Results"),
+            #actionButton("save_selection", "Save Selection")
             
             
             ),
 
         mainPanel(
+            # fluidRow(
+            # column(6,
+            #        selectInput("density_level", 
+            #                    label = "Implementation Location (by density)", 
+            #                    choices = c("Everywhere" = 1,
+            #                                "Above 5,000 per sq.mile"=2,
+            #                                "Above 10,000 per sq.mile"=3,
+            #                                "Above 20,000 per sq.mile"=4) )
+            #        )),
+            # fluidRow(
+            # column(6,
+            #        checkboxGroupInput("service_types", "Service Types", 
+            #                           choices = list("Scooter" = 1,
+            #                                          "Docked Bike" = 2,
+            #                                          "Dockless Bike" = 3, 
+            #                                          "Scooter+Transit" = 4), 
+            #                           selected = c(1,2,3,4))
+            # ),
+            # column(6,
+            #        radioButtons("report_metric", "Report Metric", choices = list("Trip Count (per day)" = 1, 
+            #                                                                      "Net Accessibility" = 2,
+            #                                                                      "Net Mobility Carbon Productivity (MCP)"=3,
+            #                                                                      'Net GHG Emission (kg)'=4), selected = 1)
+            # )),
             fluidRow(
-            column(6,
-                   selectInput("density_level", 
-                               label = "Implementation Location (by density)", 
-                               choices = c("Everywhere" = 1,
-                                           "Above 5,000 per sq.mile"=2,
-                                           "Above 10,000 per sq.mile"=3,
-                                           "Above 20,000 per sq.mile"=4) )
-                   )),
-            fluidRow(
-            column(6,
-                   checkboxGroupInput("service_types", "Service Types", 
-                                      choices = list("Scooter" = 1,
-                                                     "Docked Bike" = 2,
-                                                     "Dockless Bike" = 3, 
-                                                     "Scooter+Transit" = 4), 
-                                      selected = c(1,2,3,4))
+                textOutput("totalGHG")
             ),
-            column(6,
-                   radioButtons("report_metric", "Report Metric", choices = list("Trip Count (per day)" = 1, 
-                                                                                 "Net Accessibility" = 2,
-                                                                                 "Net Mobility Carbon Productivity (MCP)"=3,
-                                                                                 'Net GHG Emission (kg)'=4), selected = 1)
-            )),
-            leafletOutput("mymap"),
+            fluidRow (
+                leafletOutput("mymap")),
+            fluidRow(
+                column(6,
+                       plotOutput('accessibility')),
+                column(6,
+                       plotOutput('mcp')))
+           
         )
     )
 )
@@ -108,6 +190,8 @@ server <- function(input, output) {
             return(FALSE)
         }
     })
+    
+    #select msa_tract shapefile
     selectMSA_reactive = reactive({
         if (input$msa_codes!= "00"){
             geo_msa_tract = msa_tract_shp[msa_tract_shp$jmsa_geoid==input$msa_codes,]
@@ -117,8 +201,20 @@ server <- function(input, output) {
             return()
         }
     })
-    aggregate_reactive = reactive({
-        geo_msa_tract = selectMSA_reactive()
+    
+    #select file corresponding to variables
+    selectVar_reactive = reactive({
+        path = "/Users/tianqizou/Documents/DOE/model literature/hybrid choice/aws/"
+        filename = paste0('msa',input$msa_codes,'b',input$bike_lane,'v', input$veh_avail, '.csv')
+        print(paste0(path, filename))
+        geo_results = read.csv(paste0(path, filename))
+        return(geo_results)
+        
+    })
+    
+    #calculate preliminary results
+    prelim_reactive = reactive({
+        geo_results = selectVar_reactive()
         scooter = 0
         docked = 0
         dockless = 0
@@ -149,7 +245,6 @@ server <- function(input, output) {
             geo_results$density=ifelse(geo_results$popdensity>=20,1,0)
         }
         # sum of expontial utility
-        
         ut_car = exp(geo_results$car.utility)*geo_results$car_av 
         ut_transit = exp(geo_results$transit.utility)*geo_results$transit_av 
         ut_ridehail = exp(geo_results$ridehail.utility)*geo_results$rd_av 
@@ -204,7 +299,7 @@ server <- function(input, output) {
         scc = 51
         a=-0.799 # need to prepare a file to store all cost coefficients
         
-        pE =(eCar*geo_results$Pcar+
+        geo_results$pE =(eCar*geo_results$Pcar+
                  eTran*geo_results$Ptransit+
                  eDocked*geo_results$Pdockedbike+
                  eDockless*geo_results$Pdocklessbike+
@@ -212,7 +307,14 @@ server <- function(input, output) {
                  eRidehail*geo_results$Pridehail+
                  (0.3*eScoot + 0.7*eTran)*geo_results$Pscooter_transit)*geo_results$TRPMILES
         
-        pE_b = (eCar*geo_results$Pcar_b+eTran*geo_results$Ptransit_b+eRidehail*geo_results$Pridehail_b)*geo_results$TRPMILES
+        geo_results$pE_b = (eCar*geo_results$Pcar_b+eTran*geo_results$Ptransit_b+eRidehail*geo_results$Pridehail_b)*geo_results$TRPMILES
+        return(geo_results)
+        
+    })
+    #caculate and aggregate for reporting metrics
+    aggregate_reactive = reactive({
+        geo_msa_tract = selectMSA_reactive()
+        geo_results = prelim_reactive()
         
         geo_tripcount = aggregate(geo_results[,'orig_tract'], by =list(geo_results$orig_tract), length)
         
@@ -222,55 +324,72 @@ server <- function(input, output) {
                                 by=list(geo_results$orig_tract),FUN = mean)
             geo_agg$trip_count = geo_tripcount$x
             geo_agg$report = rowSums(geo_agg[,c('Pscooter','Pdocklessbike','Pdockedbike','Pscooter_transit')])*geo_agg$trip_count/0.03
-            geo_map = merge(geo_msa_tract,geo_agg,by.y='orig_tract',by.x='geoid')
+            #geo_map = merge(geo_msa_tract,geo_agg,by.y='orig_tract',by.x='geoid')
         }
         else if (input$report_metric==2){#accessibility
             geo_results$report = log(geo_results$sum_exp)-log(geo_results$sum_exp_base)
             geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = mean)
-            geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
+            #geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
+            
+           
         }
         else if (input$report_metric==3){#MCP
+            # SCC  $/metric ton
+            scc = 51
+            a=-0.799 # need to prepare a file to store all cost coefficients
             
-            term2 = exp(a*scc*pE/1000000)#ton
-            term2_b = exp(a*scc*pE_b/1000000)
-            geo_results$report = log(geo_results$sum_exp + term2 )-log(geo_results$sum_exp_base + term2_b )
-
+            # term2 = exp(a*scc*geo_results$pE/1000000)#ton
+            # term2_b = exp(a*scc*geo_results$pE_b/1000000)
+            # geo_results$report = log(geo_results$sum_exp + term2 )-log(geo_results$sum_exp_base + term2_b )
+            
+            term2 = a*scc*geo_results$pE/1000000#ton
+            term2_b = a*scc*geo_results$pE_b/1000000
+            geo_results$report = log(geo_results$sum_exp) + term2 -log(geo_results$sum_exp_base) - term2_b 
+            
             geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = mean)
-            geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
+            #geo_map = merge(geo_msa_tract,geo_agg,by.y='TRACT',by.x='geoid')
         }
         else if (input$report_metric==4){#GHG (sum)
-            geo_results$report = pE-pE_b
+            geo_results$report = geo_results$pE- geo_results$pE_b
             geo_agg = aggregate(geo_results[,c('TRACT','report')],by=list(geo_results$TRACT),FUN = sum)
             geo_agg$report = geo_agg$report/0.03/1000 #kg
-            geo_map = merge(geo_msa_tract,geo_agg,by.y='Group.1',by.x='geoid')
+            #geo_map = merge(geo_msa_tract,geo_agg,by.y='Group.1',by.x='geoid')
         }
-        return(geo_map)
+        return(geo_agg)
         
     })
     output$mymap <- renderLeaflet({
         if(map_start()){
-            geo_map = aggregate_reactive()
+            geo_msa_tract = selectMSA_reactive()
+            geo_agg = aggregate_reactive()
+            geo_map = merge(geo_msa_tract,geo_agg,by.y='Group.1',by.x='geoid')
             if (input$report_metric == 1) {
                 label_report = sprintf("Trip count:%g trips per day %s", round(geo_map$report, 1),geo_map$namelsad)
                 groupname = "Trip count"
                 legendformat = labelFormat()
+                legend_title = "Trip count per day"
+ 
             }
             else if (input$report_metric == 2) {
-                label_report = sprintf("Net Logsum Accessibility:%g, %s", round(geo_map$report, 1),geo_map$namelsad)
+                label_report = sprintf("Net Logsum Accessibility:%g, %s", round(geo_map$report, 3),geo_map$namelsad)
                 groupname = "Accessibility"
                 legendformat = labelFormat()
+                legend_title = "Net accessibility per trip"
             }
             else if (input$report_metric == 3) {
-                label_report = sprintf("Net Mobility Carbon Productivity (MCP): %g, %s", round(geo_map$report, 1),geo_map$namelsad)
+                label_report = sprintf("Net Mobility Carbon Productivity (MCP): %g, %s", round(geo_map$report, 3),geo_map$namelsad)
                 groupname = "Mobility Carbon Productivity (MCP)"
                 legendformat = labelFormat()
+                legend_title = "Net MCP per trip"
             }
             else if (input$report_metric == 4) {
-                label_report = sprintf("Net GHG Emission: %g kg, %s", round(geo_map$report, 1),geo_map$namelsad)
+                label_report = sprintf("Net GHG Emission: %g kg, %s", round(geo_map$report, 2),geo_map$namelsad)
                 groupname = "GHG Emission"
                 legendformat = labelFormat()
+                legend_title = "Net GHG Emission (kg) per day"
             }
             
+             
             pal_report = colorNumeric("YlOrRd", domain = geo_map$report)
             leaflet(geo_map) %>%
                 addTiles() %>%
@@ -284,7 +403,7 @@ server <- function(input, output) {
                             highlight = highlightOptions(weight = 5, color = "#666", dashArray = "", fillOpacity = 0.7, bringToFront = TRUE),
                             label = label_report,
                             labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"), textsize = "10px", direction = "auto"))%>%
-                addLegend(pal = pal_report, values = geo_map$report, group = groupname, opacity= 0.7, title = NULL, position = "bottomright", labFormat = legendformat)
+                addLegend(title = legend_title,pal = pal_report, values = geo_map$report, group = groupname, opacity= 0.7, position = "bottomright", labFormat = legendformat)
             
         }
         else{
@@ -294,6 +413,109 @@ server <- function(input, output) {
         }    
         
     })
+    output$totalGHG <- renderText({
+        if(map_start() & input$report_metric == 4){
+            
+            geo_msa_tract = selectMSA_reactive()
+            geo_agg = aggregate_reactive()
+            paste0("City Total Net GHG Emission per Day: ",round(sum(geo_agg$report)/1000,2)," Metric Ton")
+        }
+        else{""}
+        
+    })
+    output$accessibility <- renderPlot({
+        if(map_start()){
+        geo_results = prelim_reactive()
+        geo_agg = aggregate_reactive()
+        q_hh = quantile(geo_results$mean_hhincomek)
+        quantile_hh = function(x){
+            if(x <= q_hh[[2]]){
+                #return(paste0('under ', q_hh[[2]]))
+                1
+            }else if(x <= q_hh[[3]]){
+                #return(paste0(q_hh[[2]],'-',q_hh[[3]]))
+                2
+            }else if(x <= q_hh[[4]] ){
+                #return(paste0(q_hh[[3]],'-',q_hh[[4]]))
+                3
+            }else {
+                #return(paste0('Over',q_hh[[4]]))
+                4
+            }
+        }
+        geo_results$qhh = apply(geo_results["mean_hhincomek"],MARGIN = 1, FUN=quantile_hh)
+        
+        geo_results$report = log(geo_results$sum_exp)-log(geo_results$sum_exp_base)
+            
+        geo_agg_hhincome = aggregate(geo_results[,c('qhh','report')],by=list(geo_results$qhh),FUN = mean)
+        geo_agg_hhincome$quartile = c(paste0('Under ', q_hh[[2]]),
+                                          paste0(q_hh[[2]],'-', q_hh[[3]]),
+                                          paste0(q_hh[[3]],'-', q_hh[[4]]),
+                                          paste0('Over ', q_hh[[4]]))
+        p<-ggplot(data=geo_agg_hhincome, aes(x=quartile, y=report)) +
+                geom_bar(stat="identity",fill="darkred",alpha=0.8) +
+                theme_minimal()+
+                ylab('Net Acceessibility')+
+                xlab('Income group (in $1000)')+
+                scale_x_discrete(limits= geo_agg_hhincome$quartile)
+        p
+        }else{
+            plot.new()
+        }
+    })
+    output$mcp <- renderPlot({
+        if(map_start()){
+            geo_results = prelim_reactive()
+            geo_agg = aggregate_reactive()
+            q_hh = quantile(geo_results$mean_hhincomek)
+            quantile_hh = function(x){
+                if(x <= q_hh[[2]]){
+                    #return(paste0('under ', q_hh[[2]]))
+                    1
+                }else if(x <= q_hh[[3]]){
+                    #return(paste0(q_hh[[2]],'-',q_hh[[3]]))
+                    2
+                }else if(x <= q_hh[[4]] ){
+                    #return(paste0(q_hh[[3]],'-',q_hh[[4]]))
+                    3
+                }else {
+                    #return(paste0('Over',q_hh[[4]]))
+                    4
+                }
+            }
+            geo_results$qhh = apply(geo_results["mean_hhincomek"],MARGIN = 1, FUN=quantile_hh)
+            
+            scc = 51
+            a=-0.799 # eed to prepare a file to store all cost coefficients
+            
+            # term2 = exp(a*scc*geo_results$pE/1000000)#ton
+            # term2_b = exp(a*scc*geo_results$pE_b/1000000)
+            # geo_results$report = log(geo_results$sum_exp + term2 )-log(geo_results$sum_exp_base + term2_b )
+            
+            term2 = a*scc*geo_results$pE/1000000#ton
+            term2_b = a*scc*geo_results$pE_b/1000000
+            geo_results$report = log(geo_results$sum_exp) + term2 -log(geo_results$sum_exp_base) - term2_b 
+            
+            geo_agg_hhincome = aggregate(geo_results[,c('qhh','report')],by=list(geo_results$qhh),FUN = mean)
+            geo_agg_hhincome$quartile = c(paste0('Under ', q_hh[[2]]),
+                                          paste0(q_hh[[2]],'-', q_hh[[3]]),
+                                          paste0(q_hh[[3]],'-', q_hh[[4]]),
+                                          paste0('Over ', q_hh[[4]]))
+            p<-ggplot(data=geo_agg_hhincome, aes(x=quartile, y=report)) +
+                geom_bar(stat="identity",fill="darkred",alpha=0.8) +
+                theme_minimal()+
+                ylab('Net MCP')+
+                xlab('Income group (in $1000)')+
+                scale_x_discrete(limits= geo_agg_hhincome$quartile)
+            p
+            
+        } else{
+            plot.new()
+        }
+        
+
+        })
+    
 
     
 }
